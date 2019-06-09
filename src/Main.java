@@ -34,8 +34,11 @@ public class Main {
         Kmean kmean = new Kmean(test);
         for (List<List<Double>> row:
              test.values()){
-            for (int i = 0 ; i < row.size() ; i++)
-            kmean.distanceToCentroid(kmean.centroid(),row.get(i));
+            for (int i = 0 ; i < row.size() ; i++) {
+                System.out.println(row.get(i));
+                kmean.distanceToCentroid(kmean.centroid(), row.get(i),kmean.getKey(test,row));
+
+            }
         }
         System.out.println(test);
 
