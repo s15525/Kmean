@@ -1,72 +1,141 @@
-import javax.swing.*;
-import java.sql.SQLOutput;
 import java.util.*;
+import java.util.stream.Collectors;
 
 public class Kmean {
-    Map<String, List<List<Double>>> data;
-    double xCentroid;
-    double yCentroid;
-//    double zCentroid;
-//    double tCentroid;
-    Map<String, List<Double>> centroidMap = new HashMap<>();
+    class Point {
+        double[] data;
+        int centroid = -1;
 
-    Kmean(Map<String, List<List<Double>>> data) {
-        this.data = data;
-    }
+        Point(double[] _data) {
+            data = _data;
+        }
+        public double Distance(Point p) {
+            double n = 0;
 
-    public Map<String, List<Double>> centroid() {
-        for (List<List<Double>> row :
-                data.values()) {
-            List<Double> xyz = new ArrayList<>();
-            xCentroid = 0;
-            yCentroid = 0;
-//            zCentroid = 0;
-//            tCentroid = 0;
-            for (int i = 0; i < row.size(); i++) {
-                List<Double> onexyz = row.get(i);
-                xCentroid += onexyz.get(0);
-                yCentroid += onexyz.get(1);
-//                zCentroid += onexyz.get(2);
-//                tCentroid += onexyz.get(3);
+            for(int i = 0; i < data.length; i++) {
+                n += Math.pow(data[i] - p.data[i], 2);
             }
 
-            System.out.println(row.size());
-            xyz.add(xCentroid/row.size());
-            xyz.add(yCentroid/row.size());
-//            xyz.add(zCentroid/row.size());
-//            xyz.add(tCentroid/row.size());
-            centroidMap.put(getKey(data, row), xyz);
+            return Math.sqrt(n);
         }
-        return centroidMap;
+        public Point Copy() {
+            Point copy = new Point(data.clone());
+            copy.centroid = centroid;
+
+            return copy;
+        }
+
+        @Override
+        public String toString() {
+            return Arrays.toString(data);
+        }
     }
 
-    public void distanceToCentroid(Map<String, List<Double>> centroidMap, List<Double> xyz, String name) {
-        double sum = 0;
-        double result = 0;
-        Map<String, Double> distanceMap = new HashMap<>();
-        for (List<Double> xyzCentroid :
-                centroidMap.values()) {
-            for (int i = 0; i < xyz.size(); i++) {
-                sum += Math.pow((xyzCentroid.get(i) - xyz.get(i)), 2);
+    private List<Point> data = new ArrayList<>();
+    private List<Point> centroids = new ArrayList<>();
+    private List<List<Double>> maxMins = new ArrayList<>();
+    private int dimensions;
+
+    Kmean(List<List<Double>> _data) {
+        for (List<Double> row : _data) {
+            for(int i = 0; i < row.size(); i++) {
+                if(maxMins.size() <= i) {
+                    maxMins.add(Arrays.asList(0., 0., 0.));
+                }
+                List<Double> maxmin = maxMins.get(i);
+                if(row.get(i) > maxmin.get(0)) maxmin.set(0, row.get(i));
+                else if(row.get(i) < maxmin.get(1)) maxmin.set(1, row.get(i));
+
+                maxmin.set(2, maxmin.get(2) + row.get(i) / _data.size());
+
+                maxMins.set(i, maxmin);
             }
-            result = Math.sqrt(sum);
-            distanceMap.put(getKey(centroidMap, xyzCentroid), result);
+
+            data.add(new Point(row.stream().mapToDouble(d -> d).toArray()));
         }
-        Optional<Map.Entry<String, Double>> minEntry = distanceMap.entrySet()
-                .stream()
-                .min(Comparator.comparing(Map.Entry::getValue));
-        System.out.println(getKey(distanceMap,minEntry.get().getValue()) + " " + minEntry.get().getValue());
+
+        dimensions = data.get(0).data.length;
     }
 
-    public <K, V> K getKey(Map<K, V> map, V value) {
-        for (Map.Entry<K, V> entry : map.entrySet()) {
-            if (value.equals(entry.getValue())) {
-                return entry.getKey();
+    private int iteration = 1;
+    private boolean ended = false;
+    public boolean clusterize(int k) {
+        if(ended == true) return false;
+
+        // set random centroid points if dont exist
+        if(centroids.size() == 0) {
+            for (int ki = 0; ki < k; ki++) {
+                int r = (int) Math.floor(Math.random() * data.size());
+                Point rand = data.get(r).Copy();
+
+                centroids.add(rand);
+                centroids.get(ki).centroid = ki;
             }
         }
-        return null;
-    }
 
+        List<Point> centroidsCopy =
+                centroids.stream().map(Point::Copy).collect(Collectors.toList());
+
+        for(Point point : data) {
+            double minDistance = 1000000000;
+
+            for(Point centroid : centroids) {
+                double dist = point.Distance(centroid);
+                if(dist < minDistance) {
+                    point.centroid = centroid.centroid;
+                    minDistance = dist;
+                }
+            }
+        }
+
+        double distSum = 0;
+        for(Point centroid : centroids) {
+            double[] sum = new double[dimensions];
+            int points = 0;
+
+            for(Point point : data) {
+                if(point.centroid == centroid.centroid) {
+                    distSum += centroid.Distance(point);
+                    points++;
+                    for(int dim = 0; dim < dimensions; dim++) {
+                        sum[dim] += point.data[dim];
+                    }
+                }
+            }
+
+            for(int dim = 0; dim < dimensions; dim++) {
+                sum[dim] /= points;
+                centroid.data[dim] = sum[dim];
+            }
+        }
+
+        System.out.println("Clusters distances sum: " + distSum);
+
+        double diff = 0;
+        for(int i = 0; i < centroidsCopy.size(); i++) {
+            diff += centroids.get(i).Distance(centroidsCopy.get(i));
+        }
+
+        if(diff == 0) {
+            System.out.println("Ended k-mean clusterization in " + iteration + " " +
+                    "iterations.\n");
+            for(Point centroid : centroids) {
+                System.out.print("Cluster" + centroid.centroid + ": ");
+                for(Point point : data) {
+                    if (point.centroid == centroid.centroid) {
+                        System.out.print(point + ", ");
+                    }
+                }
+                System.out.println();
+            }
+
+            ended = true;
+        }
+        else {
+            System.out.println("End of " + iteration++ + ". iteration\n");
+        }
+        return false;
+    }
 }
 
 
